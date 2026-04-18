@@ -3,9 +3,7 @@
 > Add one decorator. Any Python loop auto-resumes from exactly where it crashed.
 
 <p align="center">
-  <a href="gif.mp4">
-    <img src="https://img.shields.io/badge/▶️-Watch%20Demo-blue?style=for-the-badge" />
-  </a>
+  <img src="demo.png" width="900"/>
 </p>
 
 [![PyPI version](https://badge.fury.io/py/loopz.svg)](https://badge.fury.io/py/loopz)
