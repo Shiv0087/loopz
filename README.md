@@ -9,7 +9,6 @@
 [![PyPI version](https://badge.fury.io/py/loopz.svg)](https://badge.fury.io/py/loopz)
 [![Python](https://img.shields.io/pypi/pyversions/loopz)](https://pypi.org/project/loopz)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://github.com/Shiv0087/loopz/actions/workflows/tests.yml/badge.svg)](https://github.com/Shiv0087/loopz/actions)
 
 ---
 
