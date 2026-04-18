@@ -2,6 +2,10 @@
 
 > Add one decorator. Any Python loop auto-resumes from exactly where it crashed.
 
+<p align="center">
+  <video src="gif.mp4" autoplay loop muted playsinline width="100%"></video>
+</p>
+
 [![PyPI version](https://badge.fury.io/py/loopz.svg)](https://badge.fury.io/py/loopz)
 [![Python](https://img.shields.io/pypi/pyversions/loopz)](https://pypi.org/project/loopz)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
