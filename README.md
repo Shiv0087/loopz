@@ -170,7 +170,22 @@ Delete all saved data for every job.
 - **Custom C++ extensions** — if your model uses custom CUDA ops with non-standard state, manual checkpointing is needed alongside loopz.
 - **Non-picklable objects** — if an object in `state=` cannot be pickled, loopz will print a warning and skip it.
 
----
+## Custom Checkpoint Directory
+
+By default, loopz saves checkpoints to `~/.loopz/`. You can change this:
+
+```python
+@loopz.track("job", checkpoint_dir="./checkpoints/")
+def process(x):
+    ...
+
+process(range(100))
+```
+
+Useful for:
+- Organizing experiments separately
+- Saving to cloud-mounted drives
+- Avoiding clutter in the home directory
 
 ## License
 

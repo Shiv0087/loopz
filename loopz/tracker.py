@@ -25,28 +25,25 @@ from typing import Any, Dict, List, Optional
 
 CACHE_DIR = Path.home() / ".loopz"
 
+def _get_base_dir(checkpoint_dir: Optional[str] = None) -> Path:
+    base = Path(checkpoint_dir) if checkpoint_dir else CACHE_DIR
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 def _safe_name(job_name: str) -> str:
-    """Unique 12-char hex derived from the full job name.
-    Used as the ENTIRE filename stem so special chars (/ \\ : * ? < > |)
-    in job_name never corrupt the file path."""
     return hashlib.md5(job_name.encode()).hexdigest()[:12]
 
 
-def _get_path(job_name: str, ext: str) -> Path:
-    """Return a safe flat path inside CACHE_DIR.
-    The filename is ONLY the hash — the raw job_name never appears in the
-    path, so slashes, colons, spaces, and any OS-reserved chars are safe.
-    """
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    return CACHE_DIR / f"loopz_{_safe_name(job_name)}{ext}"
+def _get_path(job_name: str, ext: str, checkpoint_dir: Optional[str] = None) -> Path:
+    base = _get_base_dir(checkpoint_dir)
+    return base / f"loopz_{_safe_name(job_name)}{ext}"
 
 
 def _atomic_pickle(path: Path, obj: Any):
-    """Write to a temp file then rename — prevents partial writes on crash."""
     tmp = path.with_suffix(".tmp")
     with open(tmp, "wb") as f:
         pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -54,7 +51,6 @@ def _atomic_pickle(path: Path, obj: Any):
 
 
 def _atomic_json(path: Path, obj: dict):
-    """Atomic JSON write."""
     tmp = path.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=2)
@@ -70,6 +66,7 @@ def save_progress(
     index: int,
     total: int,
     meta: Optional[Dict] = None,
+    checkpoint_dir: Optional[str] = None,   # ✅ ADDED
 ):
     data = {
         "job_name": job_name,
@@ -79,18 +76,17 @@ def save_progress(
         "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "meta":     meta or {},
     }
-    _atomic_json(_get_path(job_name, ".json"), data)
+    _atomic_json(_get_path(job_name, ".json", checkpoint_dir), data)
 
 
-def load_progress(job_name: str) -> Optional[Dict]:
-    path = _get_path(job_name, ".json")
+def load_progress(job_name: str, checkpoint_dir: Optional[str] = None) -> Optional[Dict]:   # ✅ ADDED
+    path = _get_path(job_name, ".json", checkpoint_dir)
     if not path.exists():
         return None
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        # Corrupted file — delete and return None (graceful recovery)
         try:
             path.unlink()
         except Exception:
@@ -98,10 +94,10 @@ def load_progress(job_name: str) -> Optional[Dict]:
         return None
 
 
-def clear_progress(job_name: str):
+def clear_progress(job_name: str, checkpoint_dir: Optional[str] = None):   # ✅ ADDED
     """Remove ALL saved data for this job (progress + state + vars)."""
     for ext in [".json", ".state", ".vars", ".tmp"]:
-        p = _get_path(job_name, ext)
+        p = _get_path(job_name, ext, checkpoint_dir)
         if p.exists():
             try:
                 p.unlink()
@@ -109,10 +105,10 @@ def clear_progress(job_name: str):
                 pass
 
 
-def list_jobs() -> List[Dict]:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+def list_jobs(checkpoint_dir: Optional[str] = None) -> List[Dict]:   # ✅ ADDED (bonus)
+    base = _get_base_dir(checkpoint_dir)
     jobs = []
-    for f in sorted(CACHE_DIR.glob("*.json")):
+    for f in sorted(base.glob("*.json")):
         try:
             with open(f, encoding="utf-8") as fp:
                 jobs.append(json.load(fp))
@@ -126,7 +122,6 @@ def list_jobs() -> List[Dict]:
 # ---------------------------------------------------------------------------
 
 def save_random_state() -> Dict:
-    """Snapshot the full random state from every framework in use."""
     state: Dict[str, Any] = {
         "python": random.getstate(),
         "numpy":  np.random.get_state(),
@@ -142,7 +137,6 @@ def save_random_state() -> Dict:
 
 
 def restore_random_state(state: Optional[Dict]):
-    """Restore full random state from a previously saved snapshot."""
     if not state:
         return
     try:
@@ -164,21 +158,20 @@ def restore_random_state(state: Optional[Dict]):
 
 
 # ---------------------------------------------------------------------------
-# FIX 2 — Loop variables (running_loss, best_acc, step counters, etc.)
+# FIX 2 — Loop variables
 # ---------------------------------------------------------------------------
 
-def save_loop_vars(job_name: str, loop_vars: Dict):
-    """Persist plain Python variables that live inside the loop."""
+def save_loop_vars(job_name: str, loop_vars: Dict, checkpoint_dir: Optional[str] = None):   # ✅ ADDED
     if not loop_vars:
         return
     try:
-        _atomic_pickle(_get_path(job_name, ".vars"), loop_vars)
+        _atomic_pickle(_get_path(job_name, ".vars", checkpoint_dir), loop_vars)
     except Exception as e:
         print(f"⚠️  loopz: Could not save loop_vars — {e}")
 
 
-def load_loop_vars(job_name: str) -> Optional[Dict]:
-    path = _get_path(job_name, ".vars")
+def load_loop_vars(job_name: str, checkpoint_dir: Optional[str] = None) -> Optional[Dict]:   # ✅ ADDED
+    path = _get_path(job_name, ".vars", checkpoint_dir)
     if not path.exists():
         return None
     try:
@@ -192,8 +185,8 @@ def load_loop_vars(job_name: str) -> Optional[Dict]:
         return None
 
 
-def clear_loop_vars(job_name: str):
-    p = _get_path(job_name, ".vars")
+def clear_loop_vars(job_name: str, checkpoint_dir: Optional[str] = None):   # ✅ ADDED
+    p = _get_path(job_name, ".vars", checkpoint_dir)
     if p.exists():
         try:
             p.unlink()
@@ -202,15 +195,10 @@ def clear_loop_vars(job_name: str):
 
 
 # ---------------------------------------------------------------------------
-# State — ML objects (model, optimizer, scheduler, numpy, sklearn, etc.)
+# State — ML objects
 # ---------------------------------------------------------------------------
 
-def save_state(job_name: str, state: Dict):
-    """
-    Serialize and save all ML objects in `state`.
-    Always snapshots random state alongside model weights.
-    Uses atomic write — safe to call during training.
-    """
+def save_state(job_name: str, state: Dict, checkpoint_dir: Optional[str] = None):   # ✅ ADDED
     if not state:
         return
     serialized: Dict[str, Any] = {}
@@ -219,17 +207,12 @@ def save_state(job_name: str, state: Dict):
             serialized[key] = _serialize_obj(obj)
         except Exception as e:
             print(f"⚠️  loopz: Could not save state['{key}'] — {e}")
-    # FIX 1 — always bundle random state with model state
     serialized["__random_state__"] = save_random_state()
-    _atomic_pickle(_get_path(job_name, ".state"), serialized)
+    _atomic_pickle(_get_path(job_name, ".state", checkpoint_dir), serialized)
 
 
-def load_state(job_name: str, state: Dict) -> bool:
-    """
-    Restore all ML objects in `state` IN PLACE.
-    Returns True if successfully loaded, False otherwise.
-    """
-    path = _get_path(job_name, ".state")
+def load_state(job_name: str, state: Dict, checkpoint_dir: Optional[str] = None) -> bool:   # ✅ ADDED
+    path = _get_path(job_name, ".state", checkpoint_dir)
     if not path.exists():
         return False
     try:
@@ -239,7 +222,6 @@ def load_state(job_name: str, state: Dict) -> bool:
         print(f"⚠️  loopz: Could not read state file — {e}")
         return False
 
-    # FIX 1 — restore random state first
     if "__random_state__" in serialized:
         restore_random_state(serialized["__random_state__"])
 
@@ -258,29 +240,20 @@ def load_state(job_name: str, state: Dict) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Serialization — type-aware, handles every ML framework
+# Serialization helpers — unchanged from original
 # ---------------------------------------------------------------------------
 
 def _serialize_obj(obj: Any) -> Dict:
-    """
-    Detect object type and serialize correctly.
-    Covers: PyTorch (Module, DataParallel, DDP, Optimizer, Scheduler,
-            GradScaler, Tensor), Numpy ndarray, Sklearn estimator,
-            any picklable Python object.
-    """
-    # ---- PyTorch ----
     try:
         import torch
         import torch.nn as nn
 
-        # FIX 3 — DataParallel: save the inner module only
         if isinstance(obj, nn.DataParallel):
             return {
                 "__type__": "torch_model_dp",
                 "data": {k: v.cpu().clone() for k, v in obj.module.state_dict().items()},
             }
 
-        # FIX 3 — DistributedDataParallel
         try:
             from torch.nn.parallel import DistributedDataParallel as DDP
             if isinstance(obj, DDP):
@@ -291,24 +264,18 @@ def _serialize_obj(obj: Any) -> Dict:
         except (ImportError, Exception):
             pass
 
-        # Regular nn.Module
         if isinstance(obj, nn.Module):
             return {
                 "__type__": "torch_model",
                 "data": {k: v.cpu().clone() for k, v in obj.state_dict().items()},
             }
 
-        # Optimizer
         if isinstance(obj, torch.optim.Optimizer):
             return {"__type__": "torch_optimizer", "data": obj.state_dict()}
 
-        # LR Scheduler — duck-typed (covers every scheduler)
         if hasattr(obj, "state_dict") and hasattr(obj, "last_epoch"):
             return {"__type__": "torch_scheduler", "data": obj.state_dict()}
 
-        # GradScaler (mixed precision)
-        # Supports both old API (torch.cuda.amp.GradScaler)
-        # and new API (torch.amp.GradScaler) introduced in PyTorch 2.x
         _is_scaler = False
         try:
             from torch.cuda.amp import GradScaler as _CudaScaler
@@ -326,25 +293,21 @@ def _serialize_obj(obj: Any) -> Dict:
         if _is_scaler:
             return {"__type__": "torch_scaler", "data": obj.state_dict()}
 
-        # Raw Tensor
         if isinstance(obj, torch.Tensor):
             return {"__type__": "torch_tensor", "data": obj.detach().cpu().clone()}
 
     except ImportError:
         pass
 
-    # ---- Numpy ----
     if isinstance(obj, np.ndarray):
         return {"__type__": "numpy", "data": obj.copy()}
 
-    # ---- Sklearn ----
     if hasattr(obj, "fit") and hasattr(obj, "predict"):
         try:
             return {"__type__": "sklearn", "data": pickle.dumps(obj)}
         except Exception:
             pass
 
-    # ---- Fallback: generic pickle ----
     try:
         return {"__type__": "pickle", "data": pickle.dumps(obj)}
     except Exception as e:
@@ -355,19 +318,13 @@ def _serialize_obj(obj: Any) -> Dict:
 
 
 def _deserialize_into(obj: Any, saved: Dict):
-    """
-    Restore saved_data back into obj IN PLACE.
-    Every branch is explicit — no silent no-ops.
-    """
     t = saved.get("__type__")
 
-    # ---- PyTorch models (including DataParallel / DDP) ----
     if t in ("torch_model", "torch_model_dp", "torch_model_ddp"):
         try:
             import torch
             import torch.nn as nn
             target = obj
-            # Unwrap DataParallel / DDP
             if isinstance(obj, nn.DataParallel):
                 target = obj.module
             try:
@@ -376,7 +333,6 @@ def _deserialize_into(obj: Any, saved: Dict):
                     target = obj.module
             except (ImportError, Exception):
                 pass
-            # Move weights to the device the model currently lives on
             try:
                 device = next(target.parameters()).device
             except StopIteration:
@@ -386,28 +342,24 @@ def _deserialize_into(obj: Any, saved: Dict):
         except Exception as e:
             raise RuntimeError(f"loopz: torch model restore failed — {e}") from e
 
-    # ---- Optimizer ----
     elif t == "torch_optimizer":
         try:
             obj.load_state_dict(saved["data"])
         except Exception as e:
             raise RuntimeError(f"loopz: optimizer restore failed — {e}") from e
 
-    # ---- LR Scheduler ----
     elif t == "torch_scheduler":
         try:
             obj.load_state_dict(saved["data"])
         except Exception as e:
             raise RuntimeError(f"loopz: scheduler restore failed — {e}") from e
 
-    # ---- GradScaler ----
     elif t == "torch_scaler":
         try:
             obj.load_state_dict(saved["data"])
         except Exception as e:
             raise RuntimeError(f"loopz: GradScaler restore failed — {e}") from e
 
-    # ---- Torch Tensor ----
     elif t == "torch_tensor":
         try:
             import torch
@@ -415,44 +367,32 @@ def _deserialize_into(obj: Any, saved: Dict):
         except Exception:
             obj.data = saved["data"]
 
-    # ---- Numpy ----
     elif t == "numpy":
         try:
             obj[:] = saved["data"]
         except Exception as e:
             raise RuntimeError(f"loopz: numpy array restore failed — {e}") from e
 
-    # ---- Sklearn ----
     elif t == "sklearn":
         try:
             restored = pickle.loads(saved["data"])
-            # Copy all attributes in-place so the caller's reference updates
             obj.__dict__.update(restored.__dict__)
         except Exception as e:
             raise RuntimeError(f"loopz: sklearn model restore failed — {e}") from e
 
-    # ---- Generic pickle ----
     elif t == "pickle":
         try:
             restored = pickle.loads(saved["data"])
-            # In-place mutation strategies ordered by type:
             if isinstance(obj, list):
-                # list supports slice assignment
                 obj[:] = restored
             elif isinstance(obj, dict):
-                # dict supports clear + update
                 obj.clear()
                 obj.update(restored)
             elif isinstance(obj, np.ndarray):
-                # 0-d or mismatched shape numpy — fall back to slice
                 obj[()] = restored
             elif hasattr(obj, "__dict__"):
-                # Custom object — copy attributes in-place
                 obj.__dict__.update(restored.__dict__)
             else:
-                # True primitive (int, float, str, bool) — Python cannot
-                # rebind the caller's variable from inside a function.
-                # This is a Python language limitation, not a loopz bug.
                 print(
                     f"⚠️  loopz: cannot restore primitive type "
                     f"'{type(obj).__name__}' in-place (Python limitation). "

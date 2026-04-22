@@ -65,6 +65,7 @@ def track(
     state:      Optional[Dict]          = None,
     loop_vars:  Optional[Dict]          = None,
     notify:     Optional[Callable]      = None,
+    checkpoint_dir: Optional[str] = None,
 ):
     """
     Decorator — auto-saves and resumes any Python loop.
@@ -168,7 +169,7 @@ def track(
             # ----------------------------------------------------------------
             # Resume check
             # ----------------------------------------------------------------
-            saved       = load_progress(job_name)
+            saved       = load_progress(job_name,checkpoint_dir=checkpoint_dir)
             start_index = 0
 
             if saved and 0 < saved["index"] < total:
@@ -184,13 +185,13 @@ def track(
 
                 # Restore ML state
                 if state:
-                    ok = load_state(job_name, state)
+                    ok = load_state(job_name, state, checkpoint_dir=checkpoint_dir)
                     tag = "✅" if ok else "⚠️  (no saved state found)"
                     print(f"   State       : {list(state.keys())} {tag}")
 
                 # Restore loop vars
                 if loop_vars is not None:
-                    saved_vars = load_loop_vars(job_name)
+                    saved_vars = load_loop_vars(job_name, checkpoint_dir=checkpoint_dir)
                     if saved_vars:
                         for k, v in saved_vars.items():
                             if k in loop_vars:
@@ -210,7 +211,7 @@ def track(
 
             else:
                 # Fresh start — clear any stale data from a previous full run
-                clear_progress(job_name)
+                clear_progress(job_name, checkpoint_dir=checkpoint_dir)
                 print(f"\n🟢 loopz: Starting '{job_name}' — {total} items")
                 if state:
                     print(f"   Tracking    : {list(state.keys())}")
@@ -235,18 +236,19 @@ def track(
                     save_progress(
                         job_name, current_i, total,
                         meta={"elapsed_sec": round(elapsed, 1)},
+                        checkpoint_dir=checkpoint_dir
                     )
                 except Exception as e:
                     print(f"\n⚠️  loopz: could not save progress checkpoint — {e}")
                     return   # skip state/vars save too if progress failed
                 try:
                     if state:
-                        save_state(job_name, state)
+                        save_state(job_name, state, checkpoint_dir=checkpoint_dir)
                 except Exception as e:
                     print(f"\n⚠️  loopz: could not save state checkpoint — {e}")
                 try:
                     if loop_vars is not None:
-                        save_loop_vars(job_name, loop_vars)
+                        save_loop_vars(job_name, loop_vars, checkpoint_dir=checkpoint_dir)
                 except Exception as e:
                     print(f"\n⚠️  loopz: could not save loop_vars checkpoint — {e}")
 
@@ -271,8 +273,8 @@ def track(
                 # boundary, then immediately clear.
                 elapsed = time.time() - start_time
                 _checkpoint(total, elapsed)   # covers the tail gap — BUG FIX
-                clear_progress(job_name)
-                clear_loop_vars(job_name)
+                clear_progress(job_name , checkpoint_dir=checkpoint_dir)
+                clear_loop_vars(job_name, checkpoint_dir=checkpoint_dir)
 
                 elapsed_str = _fmt_time(elapsed)
                 print(
@@ -303,11 +305,12 @@ def track(
                         "error":       err_msg,
                         "elapsed_sec": round(elapsed, 1),
                     },
+                    checkpoint_dir=checkpoint_dir
                 )
                 if state:
-                    save_state(job_name, state)
+                    save_state(job_name, state, checkpoint_dir=checkpoint_dir)
                 if loop_vars is not None:
-                    save_loop_vars(job_name, loop_vars)
+                    save_loop_vars(job_name, loop_vars, checkpoint_dir=checkpoint_dir)
 
                 what_saved = "progress"
                 if state:
