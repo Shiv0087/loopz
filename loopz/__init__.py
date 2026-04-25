@@ -82,41 +82,43 @@ __all__ = [
 # High-level helpers
 # ---------------------------------------------------------------------------
 
-def status():
+def status(checkpoint_dir=None):
     """
-    Print a summary of all saved (i.e. incomplete) jobs.
+    Print a summary of all saved (incomplete) jobs.
 
-    Example output::
+    Parameters
+    ----------
+    checkpoint_dir : str or os.PathLike, optional
+        Directory to look for checkpoints in.
+        Must match the checkpoint_dir used in @loopz.track().
+        Defaults to ~/.loopz/ if not provided.
 
-        📋 loopz — 2 saved job(s):
+    Example
+    -------
+    ::
 
-          🔁 extract_features
-             Progress : 60000/118000 (50.85%)
-             Saved at : 2026-03-22 14:30:00
-
-          🔁 training
-             Progress : 12/50 (24.0%)
-             Saved at : 2026-03-22 15:10:00
+        loopz.status()
+        # or, if you used a custom dir:
+        loopz.status(checkpoint_dir="./checkpoints/")
     """
-    jobs = list_jobs()
+    from pathlib import Path
+    # expanduser() so ~/my_dir works correctly
+    base_dir = Path(checkpoint_dir).expanduser() if checkpoint_dir else None
+    jobs = list_jobs(base_dir=base_dir)
     if not jobs:
         print("\n✅ loopz: No saved jobs — all loops completed cleanly!\n")
         return
-
     print(f"\n📋 loopz — {len(jobs)} saved job(s):\n")
-    for job in jobs:
-        print(f"  🔁 {job['job_name']}")
-        print(f"     Progress : {job['index']}/{job['total']} ({job['percent']}%)")
-        print(f"     Saved at : {job['saved_at']}")
-        if job.get("meta", {}).get("error"):
-            print(f"     Crashed  : {job['meta']['error']}")
-        elapsed = job.get("meta", {}).get("elapsed_sec")
-        if elapsed:
-            print(f"     Elapsed  : {elapsed}s before crash")
+    for j in jobs:
+        print(f"  🔁 {j['job_name']}")
+        print(f"     Progress : {j['index']}/{j['total']} ({j['percent']}%)")
+        print(f"     Saved at : {j['saved_at']}")
+        if j.get("meta", {}).get("error"):
+            print(f"     Crashed  : {j['meta']['error']}")
         print()
 
 
-def reset(job_name: str):
+def reset(job_name: str, checkpoint_dir=None):
     """
     Delete ALL saved data for `job_name` — it will start fresh next run.
 
@@ -125,30 +127,56 @@ def reset(job_name: str):
     job_name : str
         The name passed to ``@loopz.track(job_name=...)``.
 
-    Example::
+    checkpoint_dir : str or os.PathLike, optional
+        Directory to look for checkpoints in.
+        Must match the checkpoint_dir used in @loopz.track().
+        Defaults to ~/.loopz/ if not provided.
+
+    Example
+    -------
+    ::
 
         loopz.reset("extract_features")
+        # or, if you used a custom dir:
+        loopz.reset("extract_features", checkpoint_dir="./checkpoints/")
         # → 🗑️  loopz: 'extract_features' cleared. Will start fresh next run.
     """
-    clear_progress(job_name)
-    clear_loop_vars(job_name)
+    from pathlib import Path
+    # expanduser() so ~/my_dir works correctly
+    base_dir = Path(checkpoint_dir).expanduser() if checkpoint_dir else None
+    clear_progress(job_name, base_dir=base_dir)
+    clear_loop_vars(job_name, base_dir=base_dir)
     print(f"🗑️  loopz: '{job_name}' cleared. Will start fresh next run.")
 
 
-def reset_all():
+def reset_all(checkpoint_dir=None):
     """
     Delete saved data for EVERY job.
 
     Use with care — this cannot be undone.
 
-    Example::
+    Parameters
+    ----------
+    checkpoint_dir : str or os.PathLike, optional
+        Directory to look for checkpoints in.
+        Must match the checkpoint_dir used in @loopz.track().
+        Defaults to ~/.loopz/ if not provided.
+
+    Example
+    -------
+    ::
 
         loopz.reset_all()
-        # → 🗑️  loopz: All saved jobs cleared.
+        # or, if you used a custom dir:
+        loopz.reset_all(checkpoint_dir="./checkpoints/")
+        # → 🗑️  loopz: All N saved job(s) cleared.
     """
-    jobs = list_jobs()
-    for job in jobs:
-        clear_progress(job["job_name"])
-        clear_loop_vars(job["job_name"])
+    from pathlib import Path
+    # expanduser() so ~/my_dir works correctly
+    base_dir = Path(checkpoint_dir).expanduser() if checkpoint_dir else None
+    jobs = list_jobs(base_dir=base_dir)
+    for j in jobs:
+        clear_progress(j["job_name"], base_dir=base_dir)
+        clear_loop_vars(j["job_name"], base_dir=base_dir)
     n = len(jobs)
-    print(f"🗑️  loopz: All {n} saved job(s) cleared.")  
+    print(f"🗑️  loopz: All {n} saved job(s) cleared.")
