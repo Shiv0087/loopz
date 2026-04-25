@@ -36,13 +36,15 @@ def _safe_name(job_name: str) -> str:
     return hashlib.md5(job_name.encode()).hexdigest()[:12]
 
 
-def _get_path(job_name: str, ext: str) -> Path:
-    """Return a safe flat path inside CACHE_DIR.
-    The filename is ONLY the hash — the raw job_name never appears in the
-    path, so slashes, colons, spaces, and any OS-reserved chars are safe.
+# ✅ CHANGED: accepts optional base_dir instead of hardcoding CACHE_DIR
+def _get_path(job_name: str, ext: str, base_dir: Optional[Path] = None) -> Path:
+    """Return a safe flat path inside base_dir (or CACHE_DIR if not given).
+    base_dir is resolved ONCE by the caller (decorator or public API) —
+    internal tracker functions never need to know about checkpoint_dir.
     """
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    return CACHE_DIR / f"loopz_{_safe_name(job_name)}{ext}"
+    base = base_dir if base_dir is not None else CACHE_DIR
+    base.mkdir(parents=True, exist_ok=True)
+    return base / f"loopz_{_safe_name(job_name)}{ext}"
 
 
 def _atomic_pickle(path: Path, obj: Any):
@@ -65,11 +67,13 @@ def _atomic_json(path: Path, obj: dict):
 # Progress — JSON (human-readable, easy to inspect)
 # ---------------------------------------------------------------------------
 
+# ✅ CHANGED: added base_dir parameter, passed to _get_path
 def save_progress(
     job_name: str,
     index: int,
     total: int,
     meta: Optional[Dict] = None,
+    base_dir: Optional[Path] = None,
 ):
     data = {
         "job_name": job_name,
@@ -79,11 +83,12 @@ def save_progress(
         "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "meta":     meta or {},
     }
-    _atomic_json(_get_path(job_name, ".json"), data)
+    _atomic_json(_get_path(job_name, ".json", base_dir), data)
 
 
-def load_progress(job_name: str) -> Optional[Dict]:
-    path = _get_path(job_name, ".json")
+# ✅ CHANGED: added base_dir parameter, passed to _get_path
+def load_progress(job_name: str, base_dir: Optional[Path] = None) -> Optional[Dict]:
+    path = _get_path(job_name, ".json", base_dir)
     if not path.exists():
         return None
     try:
@@ -98,10 +103,11 @@ def load_progress(job_name: str) -> Optional[Dict]:
         return None
 
 
-def clear_progress(job_name: str):
+# ✅ CHANGED: added base_dir parameter, passed to _get_path
+def clear_progress(job_name: str, base_dir: Optional[Path] = None):
     """Remove ALL saved data for this job (progress + state + vars)."""
     for ext in [".json", ".state", ".vars", ".tmp"]:
-        p = _get_path(job_name, ext)
+        p = _get_path(job_name, ext, base_dir)
         if p.exists():
             try:
                 p.unlink()
@@ -109,10 +115,12 @@ def clear_progress(job_name: str):
                 pass
 
 
-def list_jobs() -> List[Dict]:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+# ✅ CHANGED: added base_dir parameter, uses it instead of hardcoded CACHE_DIR
+def list_jobs(base_dir: Optional[Path] = None) -> List[Dict]:
+    target = base_dir if base_dir is not None else CACHE_DIR
+    target.mkdir(parents=True, exist_ok=True)
     jobs = []
-    for f in sorted(CACHE_DIR.glob("*.json")):
+    for f in sorted(target.glob("loopz_*.json")):
         try:
             with open(f, encoding="utf-8") as fp:
                 jobs.append(json.load(fp))
@@ -167,18 +175,20 @@ def restore_random_state(state: Optional[Dict]):
 # FIX 2 — Loop variables (running_loss, best_acc, step counters, etc.)
 # ---------------------------------------------------------------------------
 
-def save_loop_vars(job_name: str, loop_vars: Dict):
+# ✅ CHANGED: added base_dir parameter, passed to _get_path
+def save_loop_vars(job_name: str, loop_vars: Dict, base_dir: Optional[Path] = None):
     """Persist plain Python variables that live inside the loop."""
     if not loop_vars:
         return
     try:
-        _atomic_pickle(_get_path(job_name, ".vars"), loop_vars)
+        _atomic_pickle(_get_path(job_name, ".vars", base_dir), loop_vars)
     except Exception as e:
         print(f"⚠️  loopz: Could not save loop_vars — {e}")
 
 
-def load_loop_vars(job_name: str) -> Optional[Dict]:
-    path = _get_path(job_name, ".vars")
+# ✅ CHANGED: added base_dir parameter, passed to _get_path
+def load_loop_vars(job_name: str, base_dir: Optional[Path] = None) -> Optional[Dict]:
+    path = _get_path(job_name, ".vars", base_dir)
     if not path.exists():
         return None
     try:
@@ -192,8 +202,9 @@ def load_loop_vars(job_name: str) -> Optional[Dict]:
         return None
 
 
-def clear_loop_vars(job_name: str):
-    p = _get_path(job_name, ".vars")
+# ✅ CHANGED: added base_dir parameter, passed to _get_path
+def clear_loop_vars(job_name: str, base_dir: Optional[Path] = None):
+    p = _get_path(job_name, ".vars", base_dir)
     if p.exists():
         try:
             p.unlink()
@@ -205,7 +216,8 @@ def clear_loop_vars(job_name: str):
 # State — ML objects (model, optimizer, scheduler, numpy, sklearn, etc.)
 # ---------------------------------------------------------------------------
 
-def save_state(job_name: str, state: Dict):
+# ✅ CHANGED: added base_dir parameter, passed to _get_path
+def save_state(job_name: str, state: Dict, base_dir: Optional[Path] = None):
     """
     Serialize and save all ML objects in `state`.
     Always snapshots random state alongside model weights.
@@ -221,15 +233,16 @@ def save_state(job_name: str, state: Dict):
             print(f"⚠️  loopz: Could not save state['{key}'] — {e}")
     # FIX 1 — always bundle random state with model state
     serialized["__random_state__"] = save_random_state()
-    _atomic_pickle(_get_path(job_name, ".state"), serialized)
+    _atomic_pickle(_get_path(job_name, ".state", base_dir), serialized)
 
 
-def load_state(job_name: str, state: Dict) -> bool:
+# ✅ CHANGED: added base_dir parameter, passed to _get_path
+def load_state(job_name: str, state: Dict, base_dir: Optional[Path] = None) -> bool:
     """
     Restore all ML objects in `state` IN PLACE.
     Returns True if successfully loaded, False otherwise.
     """
-    path = _get_path(job_name, ".state")
+    path = _get_path(job_name, ".state", base_dir)
     if not path.exists():
         return False
     try:

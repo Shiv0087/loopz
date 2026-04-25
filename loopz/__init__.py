@@ -82,73 +82,35 @@ __all__ = [
 # High-level helpers
 # ---------------------------------------------------------------------------
 
-def status():
-    """
-    Print a summary of all saved (i.e. incomplete) jobs.
-
-    Example output::
-
-        📋 loopz — 2 saved job(s):
-
-          🔁 extract_features
-             Progress : 60000/118000 (50.85%)
-             Saved at : 2026-03-22 14:30:00
-
-          🔁 training
-             Progress : 12/50 (24.0%)
-             Saved at : 2026-03-22 15:10:00
-    """
-    jobs = list_jobs()
+def status(checkpoint_dir=None):
+    from pathlib import Path
+    base_dir = Path(checkpoint_dir) if checkpoint_dir else None
+    jobs = list_jobs(base_dir=base_dir)
     if not jobs:
-        print("\n✅ loopz: No saved jobs — all loops completed cleanly!\n")
+        print("\n📋 loopz — no saved jobs.\n")
         return
-
     print(f"\n📋 loopz — {len(jobs)} saved job(s):\n")
-    for job in jobs:
-        print(f"  🔁 {job['job_name']}")
-        print(f"     Progress : {job['index']}/{job['total']} ({job['percent']}%)")
-        print(f"     Saved at : {job['saved_at']}")
-        if job.get("meta", {}).get("error"):
-            print(f"     Crashed  : {job['meta']['error']}")
-        elapsed = job.get("meta", {}).get("elapsed_sec")
-        if elapsed:
-            print(f"     Elapsed  : {elapsed}s before crash")
+    for j in jobs:
+        print(f"  🔁 {j['job_name']}")
+        print(f"     Progress : {j['index']}/{j['total']} ({j['percent']}%)")
+        print(f"     Saved at : {j['saved_at']}")
+        if j.get("meta", {}).get("error"):
+            print(f"     Crashed  : {j['meta']['error']}")
         print()
 
 
-def reset(job_name: str):
-    """
-    Delete ALL saved data for `job_name` — it will start fresh next run.
-
-    Parameters
-    ----------
-    job_name : str
-        The name passed to ``@loopz.track(job_name=...)``.
-
-    Example::
-
-        loopz.reset("extract_features")
-        # → 🗑️  loopz: 'extract_features' cleared. Will start fresh next run.
-    """
-    clear_progress(job_name)
-    clear_loop_vars(job_name)
-    print(f"🗑️  loopz: '{job_name}' cleared. Will start fresh next run.")
+def reset(job_name: str, checkpoint_dir=None):
+    from pathlib import Path
+    base_dir = Path(checkpoint_dir) if checkpoint_dir else None
+    clear_progress(job_name, base_dir=base_dir)
+    clear_loop_vars(job_name, base_dir=base_dir)
+    print(f"🗑️  loopz: '{job_name}' reset.")
 
 
-def reset_all():
-    """
-    Delete saved data for EVERY job.
-
-    Use with care — this cannot be undone.
-
-    Example::
-
-        loopz.reset_all()
-        # → 🗑️  loopz: All saved jobs cleared.
-    """
-    jobs = list_jobs()
-    for job in jobs:
-        clear_progress(job["job_name"])
-        clear_loop_vars(job["job_name"])
-    n = len(jobs)
-    print(f"🗑️  loopz: All {n} saved job(s) cleared.")  
+def reset_all(checkpoint_dir=None):
+    from pathlib import Path
+    base_dir = Path(checkpoint_dir) if checkpoint_dir else None
+    for j in list_jobs(base_dir=base_dir):
+        clear_progress(j["job_name"], base_dir=base_dir)
+        clear_loop_vars(j["job_name"], base_dir=base_dir)
+    print("🗑️  loopz: all jobs reset.")

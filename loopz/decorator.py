@@ -15,6 +15,7 @@ import inspect
 import asyncio
 import concurrent.futures
 import functools
+from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Optional
 
 from .tracker import (
@@ -65,6 +66,7 @@ def track(
     state:      Optional[Dict]          = None,
     loop_vars:  Optional[Dict]          = None,
     notify:     Optional[Callable]      = None,
+    checkpoint_dir: Optional[str]       = None,  # ✅ ADDED
 ):
     """
     Decorator — auto-saves and resumes any Python loop.
@@ -107,6 +109,14 @@ def track(
             notify=print
             notify=lambda m: requests.post(webhook, json={"text": m})
 
+    checkpoint_dir : str, optional
+        Directory to save checkpoints in. Defaults to ~/.loopz/
+        Useful for Colab (save to Google Drive) or organising runs.
+        Pass the same path to loopz.status() and loopz.reset() so
+        they look in the right place.
+        Example::
+            checkpoint_dir="./checkpoints/run_01/"
+
     Usage
     -----
     Simple file processing::
@@ -147,6 +157,11 @@ def track(
             items = list(iterable)
             total = len(items)
 
+            # ✅ ADDED: resolve checkpoint_dir once here into a Path.
+            # Every internal call below uses _base_dir — the raw string
+            # never gets passed around. None means use ~/.loopz/ as before.
+            _base_dir: Optional[Path] = Path(checkpoint_dir) if checkpoint_dir else None
+
             # ---- save_every warnings (inside wrapper so we know total) ----
             if state and save_every > 5:
                 print(
@@ -168,7 +183,7 @@ def track(
             # ----------------------------------------------------------------
             # Resume check
             # ----------------------------------------------------------------
-            saved       = load_progress(job_name)
+            saved       = load_progress(job_name, base_dir=_base_dir)  # ✅ CHANGED
             start_index = 0
 
             if saved and 0 < saved["index"] < total:
@@ -184,13 +199,13 @@ def track(
 
                 # Restore ML state
                 if state:
-                    ok = load_state(job_name, state)
+                    ok = load_state(job_name, state, base_dir=_base_dir)  # ✅ CHANGED
                     tag = "✅" if ok else "⚠️  (no saved state found)"
                     print(f"   State       : {list(state.keys())} {tag}")
 
                 # Restore loop vars
                 if loop_vars is not None:
-                    saved_vars = load_loop_vars(job_name)
+                    saved_vars = load_loop_vars(job_name, base_dir=_base_dir)  # ✅ CHANGED
                     if saved_vars:
                         for k, v in saved_vars.items():
                             if k in loop_vars:
@@ -210,7 +225,7 @@ def track(
 
             else:
                 # Fresh start — clear any stale data from a previous full run
-                clear_progress(job_name)
+                clear_progress(job_name, base_dir=_base_dir)  # ✅ CHANGED
                 print(f"\n🟢 loopz: Starting '{job_name}' — {total} items")
                 if state:
                     print(f"   Tracking    : {list(state.keys())}")
@@ -235,18 +250,19 @@ def track(
                     save_progress(
                         job_name, current_i, total,
                         meta={"elapsed_sec": round(elapsed, 1)},
+                        base_dir=_base_dir,  # ✅ CHANGED
                     )
                 except Exception as e:
                     print(f"\n⚠️  loopz: could not save progress checkpoint — {e}")
                     return   # skip state/vars save too if progress failed
                 try:
                     if state:
-                        save_state(job_name, state)
+                        save_state(job_name, state, base_dir=_base_dir)  # ✅ CHANGED
                 except Exception as e:
                     print(f"\n⚠️  loopz: could not save state checkpoint — {e}")
                 try:
                     if loop_vars is not None:
-                        save_loop_vars(job_name, loop_vars)
+                        save_loop_vars(job_name, loop_vars, base_dir=_base_dir)  # ✅ CHANGED
                 except Exception as e:
                     print(f"\n⚠️  loopz: could not save loop_vars checkpoint — {e}")
 
@@ -271,8 +287,8 @@ def track(
                 # boundary, then immediately clear.
                 elapsed = time.time() - start_time
                 _checkpoint(total, elapsed)   # covers the tail gap — BUG FIX
-                clear_progress(job_name)
-                clear_loop_vars(job_name)
+                clear_progress(job_name, base_dir=_base_dir)  # ✅ CHANGED
+                clear_loop_vars(job_name, base_dir=_base_dir)  # ✅ CHANGED
 
                 elapsed_str = _fmt_time(elapsed)
                 print(
@@ -303,11 +319,12 @@ def track(
                         "error":       err_msg,
                         "elapsed_sec": round(elapsed, 1),
                     },
+                    base_dir=_base_dir,  # ✅ CHANGED
                 )
                 if state:
-                    save_state(job_name, state)
+                    save_state(job_name, state, base_dir=_base_dir)  # ✅ CHANGED
                 if loop_vars is not None:
-                    save_loop_vars(job_name, loop_vars)
+                    save_loop_vars(job_name, loop_vars, base_dir=_base_dir)  # ✅ CHANGED
 
                 what_saved = "progress"
                 if state:
