@@ -16,7 +16,8 @@ import asyncio
 import concurrent.futures
 import functools
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Optional
+import os
+from typing import Any, Callable, Dict, Iterable, Optional, Union
 
 from .tracker import (
     save_progress,
@@ -66,7 +67,7 @@ def track(
     state:      Optional[Dict]          = None,
     loop_vars:  Optional[Dict]          = None,
     notify:     Optional[Callable]      = None,
-    checkpoint_dir: Optional[str]       = None,  # ✅ ADDED
+    checkpoint_dir: Optional[Union[str, os.PathLike]] = None,
 ):
     """
     Decorator — auto-saves and resumes any Python loop.
@@ -157,10 +158,12 @@ def track(
             items = list(iterable)
             total = len(items)
 
-            # ✅ ADDED: resolve checkpoint_dir once here into a Path.
-            # Every internal call below uses _base_dir — the raw string
-            # never gets passed around. None means use ~/.loopz/ as before.
-            _base_dir: Optional[Path] = Path(checkpoint_dir) if checkpoint_dir else None
+                # Resolve checkpoint_dir once — all internal calls use _base_dir.
+            # expanduser() ensures ~/my_dir expands correctly.
+            # None falls back to the default ~/.loopz/ directory.
+            _base_dir: Optional[Path] = (
+                Path(checkpoint_dir).expanduser() if checkpoint_dir else None
+            )
 
             # ---- save_every warnings (inside wrapper so we know total) ----
             if state and save_every > 5:

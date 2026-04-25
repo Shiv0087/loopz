@@ -1134,3 +1134,85 @@ if failed == 0:
 else:
     print(f"  ⚠️  {failed} test(s) FAILED — fix before publishing!\n")
     sys.exit(1)
+# ===========================================================================
+# SECTION 18 — Custom Checkpoint Directory
+# ===========================================================================
+section("Section 18: Custom Checkpoint Directory")
+
+def t66():
+    # crash writes files to custom dir, NOT ~/.loopz/
+    import shutil, tempfile
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        job = "t66_custom_dir"
+        @loopz.track(job, save_every=2, checkpoint_dir=str(tmp))
+        def process(item):
+            if item == 4:
+                raise RuntimeError("crash")
+        try:
+            process(range(10))
+        except RuntimeError:
+            pass
+        # files must exist in custom dir
+        files = list(tmp.glob("loopz_*.json"))
+        assert len(files) > 0, "❌ no checkpoint file in custom dir — went to ~/.loopz/ instead"
+        # files must NOT exist in default CACHE_DIR for this job
+        from loopz.tracker import _safe_name
+        default_file = CACHE_DIR / f"loopz_{_safe_name(job)}.json"
+        assert not default_file.exists(), "❌ checkpoint written to ~/.loopz/ instead of custom dir"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+test("crash writes files to custom dir, not ~/.loopz/", t66)
+
+def t67():
+    # status(checkpoint_dir=) finds the job in custom dir
+    import shutil, tempfile
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        job = "t67_status_custom"
+        @loopz.track(job, save_every=2, checkpoint_dir=str(tmp))
+        def process(item):
+            if item == 3:
+                raise RuntimeError("crash")
+        try:
+            process(range(10))
+        except RuntimeError:
+            pass
+        # status() with custom dir must find the job
+        from loopz.tracker import list_jobs
+        jobs = list_jobs(base_dir=tmp)
+        names = [j["job_name"] for j in jobs]
+        assert job in names, f"❌ job not found by status(checkpoint_dir=) — got {names}"
+        # status() without custom dir must NOT find it
+        default_jobs = list_jobs()
+        default_names = [j["job_name"] for j in default_jobs]
+        assert job not in default_names, "❌ job found in ~/.loopz/ — should be in custom dir only"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+test("status(checkpoint_dir=) finds the job in custom dir", t67)
+
+def t68():
+    # reset(job_name, checkpoint_dir=) clears from custom dir
+    import shutil, tempfile
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        job = "t68_reset_custom"
+        @loopz.track(job, save_every=2, checkpoint_dir=str(tmp))
+        def process(item):
+            if item == 4:
+                raise RuntimeError("crash")
+        try:
+            process(range(10))
+        except RuntimeError:
+            pass
+        # confirm files are there
+        files_before = list(tmp.glob("loopz_*"))
+        assert len(files_before) > 0, "❌ no files in custom dir to reset"
+        # reset with correct dir
+        loopz.reset(job, checkpoint_dir=str(tmp))
+        # confirm files are gone
+        files_after = list(tmp.glob("loopz_*.json"))
+        assert len(files_after) == 0, f"❌ reset() left files in custom dir: {files_after}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+test("reset(job_name, checkpoint_dir=) clears from custom dir", t68)

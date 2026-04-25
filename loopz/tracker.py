@@ -36,7 +36,6 @@ def _safe_name(job_name: str) -> str:
     return hashlib.md5(job_name.encode()).hexdigest()[:12]
 
 
-# ✅ CHANGED: accepts optional base_dir instead of hardcoding CACHE_DIR
 def _get_path(job_name: str, ext: str, base_dir: Optional[Path] = None) -> Path:
     """Return a safe flat path inside base_dir (or CACHE_DIR if not given).
     base_dir is resolved ONCE by the caller (decorator or public API) —

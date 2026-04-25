@@ -88,7 +88,7 @@ def status(checkpoint_dir=None):
 
     Parameters
     ----------
-    checkpoint_dir : str, optional
+    checkpoint_dir : str or os.PathLike, optional
         Directory to look for checkpoints in.
         Must match the checkpoint_dir used in @loopz.track().
         Defaults to ~/.loopz/ if not provided.
@@ -102,10 +102,10 @@ def status(checkpoint_dir=None):
         loopz.status(checkpoint_dir="./checkpoints/")
     """
     from pathlib import Path
-    base_dir = Path(checkpoint_dir) if checkpoint_dir else None
+    # expanduser() so ~/my_dir works correctly
+    base_dir = Path(checkpoint_dir).expanduser() if checkpoint_dir else None
     jobs = list_jobs(base_dir=base_dir)
     if not jobs:
-        # ✅ FIX 2 — restored original message
         print("\n✅ loopz: No saved jobs — all loops completed cleanly!\n")
         return
     print(f"\n📋 loopz — {len(jobs)} saved job(s):\n")
@@ -120,14 +120,14 @@ def status(checkpoint_dir=None):
 
 def reset(job_name: str, checkpoint_dir=None):
     """
-    Delete all saved data for a job so it starts fresh on the next run.
+    Delete ALL saved data for `job_name` — it will start fresh next run.
 
     Parameters
     ----------
     job_name : str
-        The job name used in @loopz.track().
+        The name passed to ``@loopz.track(job_name=...)``.
 
-    checkpoint_dir : str, optional
+    checkpoint_dir : str or os.PathLike, optional
         Directory to look for checkpoints in.
         Must match the checkpoint_dir used in @loopz.track().
         Defaults to ~/.loopz/ if not provided.
@@ -136,24 +136,28 @@ def reset(job_name: str, checkpoint_dir=None):
     -------
     ::
 
-        loopz.reset("training")
+        loopz.reset("extract_features")
         # or, if you used a custom dir:
-        loopz.reset("training", checkpoint_dir="./checkpoints/")
+        loopz.reset("extract_features", checkpoint_dir="./checkpoints/")
+        # → 🗑️  loopz: 'extract_features' cleared. Will start fresh next run.
     """
     from pathlib import Path
-    base_dir = Path(checkpoint_dir) if checkpoint_dir else None
+    # expanduser() so ~/my_dir works correctly
+    base_dir = Path(checkpoint_dir).expanduser() if checkpoint_dir else None
     clear_progress(job_name, base_dir=base_dir)
     clear_loop_vars(job_name, base_dir=base_dir)
-    print(f"🗑️  loopz: '{job_name}' reset.")
+    print(f"🗑️  loopz: '{job_name}' cleared. Will start fresh next run.")
 
 
 def reset_all(checkpoint_dir=None):
     """
-    Delete all saved data for every job so they all start fresh.
+    Delete saved data for EVERY job.
+
+    Use with care — this cannot be undone.
 
     Parameters
     ----------
-    checkpoint_dir : str, optional
+    checkpoint_dir : str or os.PathLike, optional
         Directory to look for checkpoints in.
         Must match the checkpoint_dir used in @loopz.track().
         Defaults to ~/.loopz/ if not provided.
@@ -165,10 +169,14 @@ def reset_all(checkpoint_dir=None):
         loopz.reset_all()
         # or, if you used a custom dir:
         loopz.reset_all(checkpoint_dir="./checkpoints/")
+        # → 🗑️  loopz: All N saved job(s) cleared.
     """
     from pathlib import Path
-    base_dir = Path(checkpoint_dir) if checkpoint_dir else None
-    for j in list_jobs(base_dir=base_dir):
+    # expanduser() so ~/my_dir works correctly
+    base_dir = Path(checkpoint_dir).expanduser() if checkpoint_dir else None
+    jobs = list_jobs(base_dir=base_dir)
+    for j in jobs:
         clear_progress(j["job_name"], base_dir=base_dir)
         clear_loop_vars(j["job_name"], base_dir=base_dir)
-    print("🗑️  loopz: all jobs reset.")
+    n = len(jobs)
+    print(f"🗑️  loopz: All {n} saved job(s) cleared.")
